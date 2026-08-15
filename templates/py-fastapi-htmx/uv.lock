@@ -118,7 +118,7 @@ requires-dist = [
     { name = "pyjwt", specifier = ">=2.10" },
     { name = "pyotp", specifier = ">=2.9" },
     { name = "python-multipart", specifier = ">=0.0.20" },
-    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.36" },
+    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.52" },
     { name = "structlog", specifier = ">=24.4" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34" },
 ]
