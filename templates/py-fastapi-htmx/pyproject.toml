@@ -19,7 +19,7 @@ dependencies = [
     "python-multipart>=0.0.20",
     "sqlalchemy[asyncio]>=2.0.36",
     "structlog>=24.4",
-    "uvicorn[standard]>=0.34",
+    "uvicorn[standard]>=0.52.1",
     "cryptography>=50.0.0",
 ]
 
