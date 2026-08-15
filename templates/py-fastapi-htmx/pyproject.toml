@@ -1,0 +1,216 @@
+[project]
+name = "app"
+version = "0.1.0"
+description = "Generic example application: the stack, with nothing domain-specific"
+readme = "README.md"
+requires-python = ">=3.12"
+
+dependencies = [
+    "alembic>=1.14",
+    "argon2-cffi>=23.1",
+    "fastapi>=0.115",
+    "httpx>=0.28",
+    "itsdangerous>=2.2",
+    "jinja2>=3.1",
+    "pydantic[email]>=2.10",
+    "pydantic-settings>=2.7",
+    "pyjwt>=2.10",
+    "pyotp>=2.9",
+    "python-multipart>=0.0.20",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "structlog>=24.4",
+    "uvicorn[standard]>=0.34",
+    "cryptography>=50.0.0",
+]
+
+[project.optional-dependencies]
+# Production Postgres driver. Kept optional so local dev stays zero-dependency on SQLite.
+postgres = ["asyncpg>=0.30"]
+# Serverless ASGI adapter (scale-to-zero Option B).
+lambda = ["mangum>=0.19"]
+
+[dependency-groups]
+# Deliberately absent: ruff, basedpyright and pre-commit. Their PyPI
+# distributions are prebuilt, dynamically-linked binaries (basedpyright bundles
+# its own Node), which cannot execute on NixOS. The flake supplies them instead,
+# so there is exactly one version of each and it is pinned by flake.lock.
+dev = [
+    "aiosqlite>=0.20",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.25",
+    "pytest-bdd>=8.1",
+    "pytest-cov>=6.0",
+    # Pinned to the same minor as `pkgs.playwright-driver` in flake.lock, which
+    # supplies the browser binaries. A mismatch shows up as "Executable doesn't
+    # exist" because Playwright looks for a browser revision the Nix bundle does
+    # not contain. `just doctor` reports both versions.
+    "playwright==1.61.0",
+    "pytest-playwright>=0.6",
+    "respx>=0.22",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/app"]
+
+[tool.uv]
+default-groups = ["dev"]
+
+# ---------------------------------------------------------------------------
+# Ruff - linting and formatting (replaces Black, Flake8, isort, Bandit)
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "A",    # flake8-builtins
+    "ANN",  # flake8-annotations
+    "ARG",  # flake8-unused-arguments
+    "ASYNC",# flake8-async
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "DTZ",  # flake8-datetimez
+    "E",    # pycodestyle errors
+    "EM",   # flake8-errmsg
+    "F",    # pyflakes
+    "FA",   # flake8-future-annotations
+    "I",    # isort
+    "ICN",  # flake8-import-conventions
+    "N",    # pep8-naming
+    "PERF", # perflint
+    "PIE",  # flake8-pie
+    "PL",   # pylint
+    "PT",   # flake8-pytest-style
+    "PTH",  # flake8-use-pathlib
+    "RET",  # flake8-return
+    "RSE",  # flake8-raise
+    "RUF",  # ruff-specific
+    "S",    # flake8-bandit (security)
+    "SIM",  # flake8-simplify
+    "SLF",  # flake8-self
+    "T20",  # flake8-print
+    "TC",   # flake8-type-checking
+    "TID",  # flake8-tidy-imports
+    "UP",   # pyupgrade
+    "W",    # pycodestyle warnings
+]
+ignore = [
+    "ANN401", # Allow `Any` in narrowly-typed escape hatches.
+    "B008",   # FastAPI's Depends()/Query() defaults are the documented idiom.
+    "PLR0913",# Route handlers legitimately take many injected dependencies.
+    "PLR0917",# Same: dependency injection produces wide signatures.
+    # TC001-TC003 want annotation-only imports moved into `if TYPE_CHECKING`.
+    # That is wrong for this stack: FastAPI resolves handler annotations at
+    # runtime to build validation and dependencies, SQLAlchemy resolves
+    # `Mapped[...]` to pick column types, and Pydantic resolves model fields.
+    # Hiding those imports turns a working app into a NameError at import time.
+    # The remaining TC rules (which catch the inverse mistake) stay enabled.
+    "TC001",
+    "TC002",
+    "TC003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests may assert, hardcode credentials, use magic values, and import inside a
+# test body when the point of the test is what happens at import time.
+"tests/**" = ["ANN", "PLC0415", "PLR2004", "S101", "S105", "S106", "SLF001"]
+"src/app/core/settings.py" = ["S104"] # 0.0.0.0 bind is intentional inside containers.
+"migrations/**" = ["ANN", "INP001"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "tests"]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+# ---------------------------------------------------------------------------
+# basedpyright - strict type checking
+# ---------------------------------------------------------------------------
+[tool.basedpyright]
+include = ["src", "tests"]
+exclude = ["**/__pycache__", ".venv", "migrations/versions"]
+typeCheckingMode = "strict"
+pythonVersion = "3.12"
+venvPath = "."
+venv = ".venv"
+extraPaths = ["src", "."]
+reportMissingTypeStubs = false
+
+# basedpyright is stricter than pyright's own "strict". The rules below are
+# switched off deliberately, each for a concrete reason:
+
+# Decorator-registered callables (FastAPI routes, SQLAlchemy event listeners,
+# exception handlers, pytest-bdd steps) are never referenced by name.
+reportUnusedFunction = false
+
+# pyjwt and pyotp ship no complete annotations, so anything downstream of them
+# is "partially unknown". Turning these off is the price of using them; the
+# boundary is narrow and covered by tests.
+reportUnknownMemberType = false
+reportUnknownVariableType = false
+reportUnknownArgumentType = false
+
+# `Any` is unavoidable at the edges: Jinja context dicts, JSON payloads,
+# structlog processors.
+reportAny = false
+reportExplicitAny = false
+
+# Idiomatic in this codebase: `session.add(x)` and `await session.flush()`
+# return values nobody wants.
+reportUnusedCallResult = false
+reportImplicitStringConcatenation = false
+
+[[tool.basedpyright.executionEnvironments]]
+# Tests legitimately reach into internals and shadow names.
+root = "tests"
+reportPrivateUsage = false
+reportUnusedParameter = false
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+# Deliberately excludes tests/step_defs. Playwright's *sync* API keeps an event
+# loop running in the main thread for the life of the session, after which
+# pytest-asyncio can no longer start one — so the BDD suite and the async suites
+# cannot share a process. Running `pytest` gives you the fast, async tests;
+# `just bdd` (and scripts/ci.sh) run tests/step_defs separately.
+testpaths = ["tests/unit", "tests/integration"]
+# "." puts the project root on sys.path so tests can import shared helpers
+# from tests.conftest; "src" makes the app importable without installing it.
+pythonpath = ["src", "."]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+bdd_features_base_dir = "features"
+addopts = "--strict-markers --strict-config"
+markers = [
+    "e2e: end-to-end test requiring a live server and browser",
+    "slow: takes seconds rather than milliseconds (retry backoff, etc.)",
+]
+# Warnings are errors. Each exemption below names a specific upstream issue
+# rather than relaxing the policy; delete one the moment its cause is fixed.
+filterwarnings = [
+    "error",
+    # pytest-bdd 8 registers fixtures through APIs pytest 9 deprecated. Both are
+    # internal to the plugin and unreachable from our code.
+    "ignore:Passing nodeid to _register_fixture is deprecated:Warning",
+    "ignore:Passing baseid to FixtureDef is deprecated:Warning",
+]
+
+[tool.coverage.run]
+source = ["src/app"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "raise NotImplementedError"]

@@ -1,0 +1,129 @@
+/* Tailwind CSS v4 entry point.
+ *
+ * v4 has no tailwind.config.js: sources and theme are declared here, and the
+ * standalone binary compiles this to static/css/app.css (`just css`).
+ *
+ * Note the split below. Classes that other classes build on top of with
+ * `@apply` must be registered with `@utility` — v4 will not `@apply` a plain
+ * `@layer components` rule, and fails the build with "unknown utility class"
+ * if you try. Leaf classes stay in `@layer components`.
+ */
+
+@import "tailwindcss";
+
+/* Class names only ever appear in Jinja templates. */
+@source "../../templates";
+
+@theme {
+  --color-brand-50: oklch(0.97 0.02 250);
+  --color-brand-100: oklch(0.93 0.04 250);
+  --color-brand-500: oklch(0.58 0.15 250);
+  --color-brand-600: oklch(0.51 0.16 250);
+  --color-brand-700: oklch(0.44 0.15 250);
+  --color-brand-900: oklch(0.28 0.09 250);
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "JetBrains Mono", "SFMono-Regular", monospace;
+}
+
+/* --- Composable bases ---------------------------------------------------- */
+
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-md px-3.5 py-2
+         text-sm font-medium transition-colors
+         focus-visible:outline-2 focus-visible:outline-offset-2
+         focus-visible:outline-brand-600
+         disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+@utility badge {
+  @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs
+         font-semibold ring-1 ring-inset;
+}
+
+/* --- Leaf components ----------------------------------------------------- */
+
+@layer components {
+  .btn-primary {
+    @apply btn bg-brand-600 text-white hover:bg-brand-700;
+  }
+
+  .btn-secondary {
+    @apply btn border border-slate-300 bg-white text-slate-700 hover:bg-slate-50;
+  }
+
+  .btn-ghost {
+    @apply btn text-slate-600 hover:bg-slate-100;
+  }
+
+  .card {
+    @apply rounded-lg border border-slate-200 bg-white shadow-sm;
+  }
+
+  .card-body {
+    @apply p-5;
+  }
+
+  .field-label {
+    @apply mb-1.5 block text-sm font-medium text-slate-700;
+  }
+
+  .field-input {
+    @apply block w-full rounded-md border border-slate-300 px-3 py-2 text-sm
+           text-slate-900 placeholder:text-slate-400
+           focus:border-brand-500 focus:outline-none focus:ring-1
+           focus:ring-brand-500;
+  }
+
+  /* Item statuses. A new ItemStatus needs one rule here and one line in
+     templates/partials/_macros.html — nowhere else. */
+  .badge-draft {
+    @apply badge bg-slate-100 text-slate-700 ring-slate-300;
+  }
+  .badge-active {
+    @apply badge bg-sky-50 text-sky-800 ring-sky-300;
+  }
+  .badge-archived {
+    @apply badge bg-amber-50 text-amber-800 ring-amber-300;
+  }
+
+  /* Outcomes, not statuses: webhook deliveries and endpoint health. */
+  .badge-success {
+    @apply badge bg-emerald-50 text-emerald-800 ring-emerald-300;
+  }
+  .badge-danger {
+    @apply badge bg-rose-50 text-rose-800 ring-rose-300;
+  }
+
+  .table {
+    @apply w-full border-collapse text-left text-sm;
+  }
+
+  .table thead th {
+    @apply border-b border-slate-200 bg-slate-50 px-4 py-2.5 text-xs
+           font-semibold tracking-wide text-slate-500 uppercase;
+  }
+
+  .table tbody td {
+    @apply border-b border-slate-100 px-4 py-3 text-slate-700;
+  }
+
+  .table tbody tr:hover {
+    @apply bg-slate-50;
+  }
+
+  .page-title {
+    @apply text-xl font-semibold tracking-tight text-slate-900;
+  }
+
+  .muted {
+    @apply text-sm text-slate-500;
+  }
+
+  /* htmx marks the element issuing a request with aria-busy. Styling that
+     attribute rather than htmx's own indicator classes is what lets us keep
+     `style-src 'self'` — htmx would otherwise inject a <style> element. */
+  [aria-busy="true"] {
+    @apply opacity-60;
+  }
+}

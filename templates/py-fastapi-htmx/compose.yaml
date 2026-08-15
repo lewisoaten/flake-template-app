@@ -1,0 +1,83 @@
+# Local service orchestration.
+#
+# The dev shell alone is enough to run the app against SQLite. Bring this up
+# when you want to exercise the Postgres path — which you should before
+# shipping, since that is what production runs.
+#
+#   docker compose up --build        # app + database
+#   docker compose up -d postgres    # just the database, app via `just dev`
+#
+# Host ports are overridable because 5432 is very often already taken:
+#   COMPOSE_POSTGRES_PORT=5433 docker compose up
+#
+# Note the COMPOSE_ prefix. These must NOT be named APP_*: the application
+# rejects any APP_* variable that does not correspond to a settings field, so an
+# APP_POSTGRES_PORT in your .env would stop the app booting.
+
+name: example-app
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: app
+    ports:
+      - "${COMPOSE_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d app"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      target: runtime
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      APP_ENVIRONMENT: staging
+      APP_DEBUG: "false"
+      APP_DATABASE_URL: postgresql+asyncpg://app:app@postgres:5432/app
+      # Compose-only throwaway value. Real deployments inject a real secret.
+      APP_SECRET_KEY: local-compose-secret-not-for-real-use
+    ports:
+      - "${COMPOSE_APP_PORT:-8000}:8000"
+    restart: unless-stopped
+
+  # Runs migrations to completion before the app starts, so two app replicas
+  # never race to apply the same revision.
+  migrate:
+    build:
+      context: .
+      target: runtime
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      APP_ENVIRONMENT: staging
+      APP_DATABASE_URL: postgresql+asyncpg://app:app@postgres:5432/app
+      APP_SECRET_KEY: local-compose-secret-not-for-real-use
+    entrypoint: ["/usr/bin/tini", "--"]
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+
+  # A stand-in partner that accepts webhooks and logs them, so you can watch
+  # the glue domain work end to end without leaving your machine.
+  partner-stub:
+    image: mendhak/http-https-echo:34
+    environment:
+      HTTP_PORT: "8080"
+    ports:
+      - "${COMPOSE_STUB_PORT:-8080}:8080"
+    profiles: ["glue"]
+
+volumes:
+  pgdata:

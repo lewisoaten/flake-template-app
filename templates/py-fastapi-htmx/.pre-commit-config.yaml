@@ -1,0 +1,75 @@
+# Hooks are intentionally *fast*: anything slower than a couple of seconds
+# belongs in `just check` or CI, not in the path of every commit.
+#
+# Install with `just setup` (or `uv run pre-commit install`).
+
+default_install_hook_types: [pre-commit, commit-msg]
+fail_fast: false
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: '^src/app/static/vendor/'
+      - id: end-of-file-fixer
+        exclude: '^src/app/static/vendor/'
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-added-large-files
+        args: ['--maxkb=512']
+      - id: detect-private-key
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+
+  # Ruff and basedpyright are `language: system` rather than pinned-rev hooks
+  # from astral-sh/ruff-pre-commit. That repo would have pre-commit install a
+  # ruff wheel into its own virtualenv — a prebuilt, dynamically-linked binary
+  # that cannot execute on NixOS. Using the dev shell's copies also guarantees
+  # the hook and `just check` can never disagree about the version.
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: ruff check --fix --force-exclude
+        language: system
+        types_or: [python, pyi]
+
+      - id: ruff-format
+        name: ruff format
+        entry: ruff format --force-exclude
+        language: system
+        types_or: [python, pyi]
+
+      - id: basedpyright
+        name: basedpyright (strict)
+        entry: basedpyright
+        language: system
+        types_or: [python, pyi]
+        pass_filenames: false
+
+      - id: uv-lock-check
+        name: uv.lock matches pyproject.toml
+        entry: uv lock --check
+        language: system
+        files: '^(pyproject\.toml|uv\.lock)$'
+        pass_filenames: false
+
+      - id: alejandra
+        name: alejandra (nix format)
+        entry: alejandra --quiet
+        language: system
+        files: '\.nix$'
+
+      # --only-verified keeps this quiet: it reports credentials that were
+      # actually confirmed live with the provider, not every high-entropy
+      # string. --since-commit HEAD limits the scan to what you are committing.
+      - id: trufflehog
+        name: trufflehog secret scan
+        entry: trufflehog git "file://." --since-commit HEAD --only-verified --fail --exclude-detectors=lob
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]

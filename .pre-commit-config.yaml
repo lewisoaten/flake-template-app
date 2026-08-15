@@ -1,0 +1,64 @@
+# Hooks for THIS repository — the template collection itself.
+#
+# Note there are two layers of pre-commit here, and they are not the same thing:
+#
+#   this file                              checks the template *repo*
+#   templates/*/.pre-commit-config.yaml    ships to users; checks their project
+#
+# pre-commit has no hierarchical config discovery — it reads exactly one config
+# from the repo root and chdirs there before running any hook. Pointing it at a
+# template's config does not work: those hooks assume the template is the repo
+# root, so basedpyright loses its settings and the uv.lock check silently
+# matches nothing. Instead, the last hook delegates to each changed template's
+# own `just precommit`.
+#
+# Install with: pre-commit install
+
+default_install_hook_types: [pre-commit]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-added-large-files
+        args: ['--maxkb=512']
+      - id: detect-private-key
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+
+  - repo: local
+    hooks:
+      - id: alejandra
+        name: alejandra (nix format)
+        entry: alejandra --quiet
+        language: system
+        files: '\.nix$'
+
+      # The failure mode this repo is most exposed to: a stale `uses:` ref, an
+      # invalid expression or a matrix mistake would otherwise only surface as a
+      # red run after pushing. Catches every one of those locally.
+      - id: actionlint
+        name: actionlint (workflow syntax)
+        entry: actionlint
+        language: system
+        files: '^\.github/workflows/.*\.ya?ml$'
+
+      # Runs the changed template's own checks, inside that template. Generic:
+      # adding a stack needs no edit here, only a `precommit` recipe in its
+      # Justfile.
+      - id: changed-templates
+        name: check changed templates
+        entry: scripts/check-changed-templates.sh
+        language: script
+        files: '^templates/[^/]+/'
+        # Without this pre-commit splits the file list across cores and invokes
+        # the script once per batch, so a template's checks run several times
+        # over. Serial means one invocation with the complete list.
+        require_serial: true

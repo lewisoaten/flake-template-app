@@ -1,0 +1,11 @@
+{
+  "name": "app-frontend-assets",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Browser dependencies only. There is no JavaScript build step: `just vendor` copies these two files straight out of node_modules into src/app/static/vendor/. They live here rather than being fetched by hash in flake.nix so that Dependabot can see and update them.",
+  "license": "0BSD",
+  "dependencies": {
+    "@alpinejs/csp": "3.16.1",
+    "htmx.org": "2.0.10"
+  }
+}

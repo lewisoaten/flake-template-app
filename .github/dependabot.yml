@@ -1,0 +1,104 @@
+# Dependabot configuration.
+#
+# The goal is that *every* pinned version in this repository is reachable by an
+# ecosystem Dependabot understands. Anything it cannot see would silently rot,
+# so where a dependency had no supported home it was moved to one:
+#
+#   htmx, Alpine   were pinned by URL + hash in templates/py-fastapi-htmx/flake.nix.
+#                  Dependabot cannot read Nix expressions, so they now live in
+#                  package.json and are covered by the `npm` entry below.
+#   Tailwind CLI   was downloaded by version in the Dockerfile. That stage is
+#                  gone; the stylesheet is built on the host with the Tailwind
+#                  from nixpkgs, so it tracks the `nix` entry instead.
+#
+# Adding a template means copying the templates/py-fastapi-htmx block and changing the
+# directory. The CI workflow discovers templates automatically, so it needs no
+# corresponding edit.
+#
+# Note the `nix` ecosystem updates flake *inputs* recorded in flake.lock. It
+# does not touch versions pinned inside flake.nix itself, which is why nothing
+# in this project pins a version there.
+
+version: 2
+
+updates:
+  # --- repository infrastructure -------------------------------------------
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: nix
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(nix)"
+
+  # --- templates/py-fastapi-htmx ----------------------------------------------------
+  # The toolchain: Python, uv, ruff, basedpyright, Tailwind, Playwright
+  # browsers and TruffleHog all arrive through nixpkgs, so this one input is
+  # what keeps them current.
+  - package-ecosystem: nix
+    directory: /templates/py-fastapi-htmx
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(nix)"
+
+  - package-ecosystem: uv
+    directory: /templates/py-fastapi-htmx
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      # Patch and minor bumps are almost always uneventful and CI proves it;
+      # majors get their own PR so they can be read properly.
+      python-minor-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+      python-dev:
+        applies-to: version-updates
+        dependency-type: development
+        update-types: [major]
+
+  # htmx and Alpine. Pinned exactly, so every bump is an explicit PR.
+  - package-ecosystem: npm
+    directory: /templates/py-fastapi-htmx
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(frontend)"
+    groups:
+      frontend:
+        patterns: ["*"]
+
+  # Base images in the Dockerfile.
+  - package-ecosystem: docker
+    directory: /templates/py-fastapi-htmx
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(docker)"
+
+  # Service images in compose.yaml — Postgres and the partner stub.
+  - package-ecosystem: docker-compose
+    directory: /templates/py-fastapi-htmx
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(docker)"
+
+  # The one remote hook repo in .pre-commit-config.yaml. Everything else there
+  # is `language: system` and comes from the dev shell.
+  - package-ecosystem: pre-commit
+    directory: /templates/py-fastapi-htmx
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(hooks)"

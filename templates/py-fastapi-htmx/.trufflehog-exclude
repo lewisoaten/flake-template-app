@@ -1,0 +1,20 @@
+# Paths TruffleHog should not scan (one Go regex per line).
+#
+# Everything here is either generated, vendored, or not ours. Without these the
+# filesystem scan walks the ~240 MB virtualenv and takes minutes.
+
+^\.venv/
+^\.direnv/
+^\.git/
+^\.ruff_cache/
+^\.pytest_cache/
+^__pycache__/
+/__pycache__/
+\.pyc$
+^htmlcov/
+^node_modules/
+^result$
+^src/app/static/vendor/
+^src/app/static/css/app\.css$
+^uv\.lock$
+^flake\.lock$

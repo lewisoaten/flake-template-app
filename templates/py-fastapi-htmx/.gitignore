@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+build/
+dist/
+
+# Tooling caches
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Local environment and data
+.env
+.direnv/
+*.db
+# WAL mode (see core/database.py) writes these alongside the database file.
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite3
+
+# Generated: `just css` compiles this from static/css/input.css.
+src/app/static/css/app.css
+
+# Third-party JS, materialised by `just vendor` from the versions pinned in
+# package.json. Not committed: checking in someone else's minified bundle means
+# redistributing it, licence obligations and all. See THIRD-PARTY-NOTICES.md.
+src/app/static/vendor/
+
+# Generated: `just openapi` / `just sdk-ts`.
+openapi.json
+clients/
+
+# Test artefacts
+test-results/
+playwright-report/
+
+# Editors
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Nix
+result
+result-*
+
+# npm: only used to fetch the two browser dependencies (see Justfile `vendor`).
+node_modules/
