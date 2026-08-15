@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% from "partials/_macros.html" import timestamp, empty_row %}
+{% block title %}{{ item.name }} — Example App{% endblock %}
+
+{% block content %}
+  <nav class="mb-4 text-sm" aria-label="Breadcrumb">
+    <a class="text-brand-600 hover:underline" href="/items">Items</a>
+    <span class="text-slate-400"> / </span>
+    <span class="text-slate-600">{{ item.name }}</span>
+  </nav>
+
+  <header class="mb-6">
+    <h1 class="page-title">{{ item.name }}</h1>
+    <p class="muted mt-1">
+      <span class="font-mono text-xs">{{ item.id }}</span>
+    </p>
+  </header>
+
+  <div class="grid gap-6 lg:grid-cols-3">
+    <div class="lg:col-span-1">
+      {# `saved` is false on a page load and true only in the fragment the
+         status POST returns, so the confirmation appears once. #}
+      {% with saved = false %}
+        {% include "partials/item_status_card.html" %}
+      {% endwith %}
+
+      <section class="card card-body mt-6">
+        <h2 class="mb-3 text-sm font-semibold text-slate-900">Description</h2>
+        {% if item.description %}
+          <p class="text-sm whitespace-pre-line text-slate-700">{{ item.description }}</p>
+        {% else %}
+          <p class="muted">No description.</p>
+        {% endif %}
+      </section>
+
+      <dl class="card card-body mt-6 space-y-3 text-sm">
+        <div class="flex justify-between gap-4">
+          <dt class="text-slate-500">Created</dt>
+          <dd>{{ timestamp(item.created_at) }}</dd>
+        </div>
+        <div class="flex justify-between gap-4">
+          <dt class="text-slate-500">Updated</dt>
+          <dd>{{ timestamp(item.updated_at) }}</dd>
+        </div>
+        <div class="flex justify-between gap-4">
+          <dt class="text-slate-500">Owner</dt>
+          <dd class="font-mono text-xs">{{ item.owner_id }}</dd>
+        </div>
+      </dl>
+    </div>
+
+    <section class="card overflow-hidden lg:col-span-2">
+      <header class="border-b border-slate-200 px-5 py-3">
+        <h2 class="text-sm font-semibold text-slate-900">Audit trail</h2>
+        <p class="muted mt-0.5">
+          Every domain event this item has produced, newest first. Rows are
+          appended and never edited.
+        </p>
+      </header>
+
+      <table class="table">
+        <thead>
+          <tr>
+            <th scope="col">Event</th>
+            <th scope="col">Subject</th>
+            <th scope="col">Actor</th>
+            <th scope="col">Payload</th>
+            <th scope="col">When</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for event in events %}
+            <tr data-testid="audit-row">
+              <td class="font-medium">{{ event.event_name }}</td>
+              <td class="font-mono text-xs">{{ event.subject_id or "—" }}</td>
+              <td class="font-mono text-xs">{{ event.actor_id or "system" }}</td>
+              <td>
+                <code class="block max-w-xs truncate font-mono text-xs text-slate-500">
+                  {{ event.payload }}
+                </code>
+              </td>
+              <td>{{ timestamp(event.created_at) }}</td>
+            </tr>
+          {% else %}
+            {{ empty_row(5, "Nothing recorded yet. Change the status to produce an event.") }}
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  </div>
+{% endblock %}

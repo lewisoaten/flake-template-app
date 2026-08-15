@@ -1,0 +1,74 @@
+{# Base layout for every full-page response.
+
+   `user` is optional: the login and error pages render without one, and so is
+   `csrf_token`: the error pages are rendered by exception handlers that have
+   no token to hand. StrictUndefined is enabled, which makes an unguarded
+   reference to either a hard failure rather than a blank space. #}
+<!doctype html>
+<html lang="en" class="h-full bg-slate-50">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    {# htmx injects a <style> element for its indicator classes unless told
+       not to. Ours would be blocked by style-src 'self'. #}
+    <meta name="htmx-config" content='{"includeIndicatorStyles":false}' />
+    <title>{% block title %}Example App{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/app.css" />
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+    <script src="/static/vendor/htmx.min.js" defer></script>
+    <script src="/static/js/app.js" defer></script>
+    {# Alpine must initialise after its components are registered by app.js;
+       both are deferred, so they run in document order. #}
+    <script src="/static/vendor/alpine-csp.min.js" defer></script>
+  </head>
+
+  <body class="flex h-full flex-col font-sans text-slate-900 antialiased">
+    <header class="border-b border-slate-200 bg-white">
+      <nav class="mx-auto flex max-w-7xl items-center gap-6 px-6 py-3" aria-label="Main">
+        <a href="/" class="text-sm font-semibold tracking-tight text-brand-700">
+          Example App
+        </a>
+
+        {% if user is defined and user %}
+          <ul class="flex items-center gap-1 text-sm">
+            <li><a class="btn-ghost" href="/items">Items</a></li>
+            {% if user.is_admin %}
+              <li><a class="btn-ghost" href="/admin/webhooks">Webhooks</a></li>
+            {% endif %}
+          </ul>
+
+          <div class="ml-auto flex items-center gap-3">
+            <span class="muted">{{ user.full_name }}</span>
+            {# A plain form, not a link: signing out is a state change, and a
+               GET would let any page log the user out with an <img> tag. #}
+            <form method="post" action="/logout">
+              {% if csrf_token is defined %}
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+              {% endif %}
+              <button type="submit" class="btn-secondary">Sign out</button>
+            </form>
+          </div>
+        {% endif %}
+      </nav>
+    </header>
+
+    <div
+      id="connection-error"
+      hidden
+      role="alert"
+      class="border-b border-rose-200 bg-rose-50 px-6 py-2 text-sm text-rose-800"
+    >
+      Lost contact with the server. Your last change may not have been saved.
+    </div>
+
+    <main class="mx-auto w-full max-w-7xl flex-1 px-6 py-8">
+      {% block content %}{% endblock %}
+    </main>
+
+    <footer class="border-t border-slate-200 bg-white px-6 py-4">
+      <p class="mx-auto max-w-7xl text-xs text-slate-400">
+        Example App — FastAPI, HTMX and Alpine, with no inline script or style.
+      </p>
+    </footer>
+  </body>
+</html>

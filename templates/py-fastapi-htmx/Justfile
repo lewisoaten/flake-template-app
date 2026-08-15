@@ -1,0 +1,300 @@
+# Justfile — developer automation standard.
+#
+# Every task assumes you are inside the Nix dev shell (`nix develop`, or
+# automatically via direnv). Nothing here depends on tools being installed
+# globally.
+
+set shell := ["bash", "-euo", "pipefail", "-c"]
+set dotenv-load := true
+
+# Every Python path the linters cover. Kept in one place so `just check`,
+# `just format` and the pre-commit hooks can never disagree about scope.
+py_paths := "src tests migrations"
+
+host := env_var_or_default("APP_HOST", "127.0.0.1")
+port := env_var_or_default("APP_PORT", "8000")
+
+# Browser dependencies are declared in package.json so Dependabot can see them;
+# `just vendor` copies them out of node_modules. See the recipe below.
+vendor_dir := "src/app/static/vendor"
+
+[group('meta')]
+default:
+    @just --list --unsorted
+
+# ---------------------------------------------------------------------------
+# Environment
+# ---------------------------------------------------------------------------
+
+# Install dependencies, hooks, assets and a seeded local database.
+[group('setup')]
+setup: sync vendor
+    pre-commit install
+    just css
+    just db-reset
+    @echo ""
+    @echo "Environment ready. Start the app with: just dev"
+
+# Resolve and install Python dependencies from uv.lock.
+[group('setup')]
+sync:
+    uv sync --all-extras
+
+# Update uv.lock to the newest versions permitted by pyproject.toml.
+[group('setup')]
+lock:
+    uv lock --upgrade
+
+# Remove every generated artefact. Safe: nothing here is source.
+[group('setup')]
+clean:
+    rm -rf .venv node_modules .pytest_cache .ruff_cache htmlcov .coverage app.db app.db-wal app.db-shm {{ vendor_dir }}
+    find . -type d -name __pycache__ -prune -exec rm -rf {} +
+
+# ---------------------------------------------------------------------------
+# Running
+# ---------------------------------------------------------------------------
+
+# Run the development server with hot reloading.
+[group('run')]
+dev:
+    uv run uvicorn app.main:app --reload --host {{ host }} --port {{ port }} \
+        --reload-dir src --reload-include '*.html' --reload-include '*.css'
+
+# Run the server the way production does: no reload, multiple workers.
+[group('run')]
+serve workers="4":
+    uv run uvicorn app.main:app --host 0.0.0.0 --port {{ port }} --workers {{ workers }}
+
+# Open a Python REPL with the app's models already imported.
+[group('run')]
+shell:
+    uv run python -i -c "import asyncio; from app.models import *; from app.core.database import get_sessionmaker"
+
+# ---------------------------------------------------------------------------
+# Frontend assets
+# ---------------------------------------------------------------------------
+
+# Compile Tailwind CSS once.
+[group('assets')]
+css:
+    tailwindcss -i src/app/static/css/input.css -o src/app/static/css/app.css --minify
+
+# Recompile Tailwind CSS on change.
+[group('assets')]
+css-watch:
+    tailwindcss -i src/app/static/css/input.css -o src/app/static/css/app.css --watch
+
+# Materialise htmx and Alpine into src/app/static/vendor/ (gitignored).
+#
+# Neither is committed: checking in someone else's minified bundle means
+# redistributing it, licence obligations and all. They are declared in
+# package.json so Dependabot can update them, installed by `npm ci` against the
+# integrity hashes in package-lock.json, and copied out verbatim — there is no
+# bundler and nothing is compiled.
+[group('assets')]
+vendor:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # --ignore-scripts: nothing here needs a postinstall, and not running
+    # arbitrary package scripts is the cheapest supply-chain win available.
+    npm ci --ignore-scripts --no-audit --no-fund
+    mkdir -p "{{ vendor_dir }}"
+    install -m 644 node_modules/htmx.org/dist/htmx.min.js "{{ vendor_dir }}/htmx.min.js"
+    install -m 644 node_modules/@alpinejs/csp/dist/cdn.min.js "{{ vendor_dir }}/alpine-csp.min.js"
+    echo "Vendored: $(ls "{{ vendor_dir }}" | tr '\n' ' ')"
+
+# ---------------------------------------------------------------------------
+# Quality gates
+# ---------------------------------------------------------------------------
+
+# Lint, check formatting and type-check. This is what CI runs.
+[group('check')]
+check: lint typecheck
+
+[group('check')]
+lint:
+    ruff check {{ py_paths }}
+    ruff format --check {{ py_paths }}
+
+[group('check')]
+typecheck:
+    basedpyright src tests
+
+# Apply every automatic fix: lint, format Python, format Nix.
+[group('check')]
+format:
+    ruff check --fix {{ py_paths }}
+    ruff format {{ py_paths }}
+    nix fmt flake.nix
+
+# Report toolchain versions and the couplings that are easy to break.
+[group('check')]
+doctor:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    printf 'python        %s\n' "$(python --version | cut -d' ' -f2)"
+    printf 'uv            %s\n' "$(uv --version | cut -d' ' -f2)"
+    printf 'ruff          %s\n' "$(ruff --version | cut -d' ' -f2)"
+    printf 'basedpyright  %s\n' "$(basedpyright --version | head -1 | cut -d' ' -f2)"
+    printf 'tailwind      %s\n' "$(tailwindcss --help 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')"
+    echo
+    # These two must agree on their major.minor or Playwright will look for a
+    # browser revision the Nix bundle does not contain.
+    driver=$(basename "$PLAYWRIGHT_BROWSERS_PATH" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo unknown)
+    client=$(uv run python -c 'import playwright; print(playwright.__version__)' 2>/dev/null || echo missing)
+    printf 'playwright client (pyproject.toml)  %s\n' "$client"
+    printf 'playwright browsers (flake.lock)    %s\n' "$(ls "$PLAYWRIGHT_BROWSERS_PATH" | tr '\n' ' ')"
+    if [ "$client" = missing ]; then
+      echo "  -> run 'just sync' first"
+    fi
+
+# Print a fresh value for APP_SECRET_KEY.
+[group('check')]
+secret-key:
+    @uv run python -m app.cli secret-key
+
+# Scan the working tree for verified secrets.
+[group('check')]
+secrets:
+    trufflehog filesystem . --only-verified --fail \
+        --exclude-paths .trufflehog-exclude --exclude-detectors=lob
+
+# Run every pre-commit hook against every file.
+[group('check')]
+hooks:
+    pre-commit run --all-files
+
+# The checks the *template repository* runs when files here change.
+#
+# Every template exposes this recipe; scripts/check-changed-templates.sh in the
+# parent repo calls it and knows nothing else about this stack. Keep it to
+# things that are fast and need no provisioning — a maintainer editing one line
+# of a Jinja template will not have run `just setup` here. Type-checking and the
+# test suites need a .venv, so they are CI's job.
+[group('check')]
+precommit: lint
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+
+# Fast unit and integration tests with coverage.
+[group('test')]
+test *args:
+    uv run pytest tests/unit tests/integration --cov=app --cov-report=term-missing {{ args }}
+
+[group('test')]
+test-unit *args:
+    uv run pytest tests/unit {{ args }}
+
+[group('test')]
+test-integration *args:
+    uv run pytest tests/integration {{ args }}
+
+# End-to-end BDD feature tests through Playwright.
+[group('test')]
+bdd *args:
+    uv run pytest tests/step_defs --browser chromium {{ args }}
+
+# Watch the browser drive the BDD suite, slowed down.
+[group('test')]
+bdd-headed:
+    uv run pytest tests/step_defs --browser chromium --headed --slowmo 300
+
+# Everything, in the order CI runs it.
+[group('test')]
+test-all: check test bdd
+
+# ---------------------------------------------------------------------------
+# Database
+# ---------------------------------------------------------------------------
+
+# Apply all pending migrations.
+[group('db')]
+db-upgrade:
+    uv run alembic upgrade head
+
+# Roll back one migration.
+[group('db')]
+db-downgrade:
+    uv run alembic downgrade -1
+
+# Autogenerate a migration from model changes. Always read the result.
+[group('db')]
+db-revision message:
+    uv run alembic revision --autogenerate -m "{{ message }}"
+
+# Print the current and pending revisions.
+[group('db')]
+db-status:
+    uv run alembic current
+    uv run alembic heads
+
+# Drop the local database, migrate it, and seed demo data.
+[group('db')]
+db-reset:
+    rm -f app.db
+    uv run alembic upgrade head
+    uv run python -m app.cli seed-demo
+
+# Insert demo accounts, users and deals.
+[group('db')]
+seed:
+    uv run python -m app.cli seed-demo
+
+# Provision an admin user and print their MFA enrolment URI.
+[group('db')]
+create-admin email name="Administrator":
+    uv run python -m app.cli create-admin --email "{{ email }}" --name "{{ name }}" \
+        --password "$(uv run python -m app.cli secret-key | head -c 24)"
+
+# ---------------------------------------------------------------------------
+# API clients
+# ---------------------------------------------------------------------------
+
+# Write the OpenAPI schema to openapi.json without starting a server.
+[group('sdk')]
+openapi:
+    uv run python -c "import json,sys; from app.main import app; json.dump(app.openapi(), sys.stdout, indent=2)" > openapi.json
+    @echo "Wrote openapi.json"
+
+# Generate a typed TypeScript client. Requires network access for npx.
+[group('sdk')]
+sdk-ts out="clients/typescript/schema.d.ts": openapi
+    mkdir -p "$(dirname {{ out }})"
+    npx --yes openapi-typescript@7 openapi.json -o {{ out }}
+    @echo "Wrote {{ out }}"
+
+# ---------------------------------------------------------------------------
+# Containers
+# ---------------------------------------------------------------------------
+
+[group('docker')]
+docker-build tag="example-app:dev": vendor css
+    docker build -t {{ tag }} .
+
+[group('docker')]
+docker-run tag="example-app:dev":
+    docker run --rm -p {{ port }}:8000 \
+        -e APP_ENVIRONMENT=staging \
+        -e APP_SECRET_KEY="$(uv run python -m app.cli secret-key)" \
+        {{ tag }}
+
+# Start Postgres and the app via compose.
+[group('docker')]
+up: vendor css
+    docker compose up --build
+
+[group('docker')]
+down:
+    docker compose down --volumes
+
+# ---------------------------------------------------------------------------
+# CI
+# ---------------------------------------------------------------------------
+
+# Exactly what scripts/ci.sh does — kept as a task for local parity.
+[group('ci')]
+ci:
+    bash scripts/ci.sh

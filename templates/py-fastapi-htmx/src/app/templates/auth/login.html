@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Sign in — Example App{% endblock %}
+
+{% block content %}
+  <div class="mx-auto max-w-md">
+    <h1 class="page-title mb-1">Sign in</h1>
+    <p class="muted mb-6">Use your account email and password.</p>
+
+    {% if error %}
+      <div
+        role="alert"
+        data-testid="error-banner"
+        class="mb-5 rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800"
+      >
+        {{ error }}
+      </div>
+    {% endif %}
+
+    <div class="card">
+      <form class="card-body space-y-5" method="post" action="/login">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        {# Where to land after a successful sign-in. The server re-validates
+           this: only same-origin absolute paths are honoured. #}
+        <input type="hidden" name="next" value="{{ next }}" />
+
+        <div>
+          <label class="field-label" for="email">Email address</label>
+          <input
+            class="field-input"
+            id="email"
+            name="email"
+            type="email"
+            autocomplete="username"
+            required
+            value="{{ email }}"
+          />
+        </div>
+
+        <div>
+          <label class="field-label" for="password">Password</label>
+          <input
+            class="field-input"
+            id="password"
+            name="password"
+            type="password"
+            autocomplete="current-password"
+            required
+            minlength="8"
+          />
+        </div>
+
+        <div>
+          <label class="field-label" for="mfa_code">
+            Authentication code
+            <span class="font-normal text-slate-400">(admins only)</span>
+          </label>
+          <input
+            class="field-input font-mono tracking-widest"
+            id="mfa_code"
+            name="mfa_code"
+            type="text"
+            inputmode="numeric"
+            autocomplete="one-time-code"
+            pattern="[0-9]{6}"
+            maxlength="6"
+            placeholder="123456"
+          />
+          <p class="mt-1.5 text-xs text-slate-500">
+            Six digits from your authenticator app. Required for admin accounts,
+            ignored for everyone else.
+          </p>
+        </div>
+
+        <button class="btn-primary w-full" id="sign-in" type="submit">Sign in</button>
+      </form>
+    </div>
+  </div>
+{% endblock %}

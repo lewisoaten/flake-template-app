@@ -1,0 +1,68 @@
+{# The item status control.
+
+   Swapped in on its own by HTMX (hx-swap="outerHTML" targeting
+   #item-status-card), so this fragment must reproduce the wrapper element
+   every time — otherwise the second save has nothing to target.
+
+   The <option> list comes from items.service.selectable_statuses, which reads
+   the same transition table the server validates against. An illegal
+   transition is therefore not merely hidden in the UI; it is rejected if
+   posted directly.
+
+   No CSRF field here: the request is issued by HTMX, and app.js copies the
+   readable `app_csrf` cookie into the X-CSRF-Token header for every one. #}
+{% from "partials/_macros.html" import status_badge, timestamp %}
+
+<div id="item-status-card" class="card">
+  <div class="card-body">
+    <div class="mb-4 flex items-center justify-between">
+      <h2 class="text-sm font-semibold text-slate-900">Status</h2>
+      <span data-testid="item-status-badge">{{ status_badge(item.status) }}</span>
+    </div>
+
+    <form
+      class="flex items-end gap-3"
+      hx-post="/items/{{ item.id }}/status"
+      hx-target="#item-status-card"
+      hx-swap="outerHTML"
+    >
+      <div class="flex-1">
+        <label class="field-label" for="item-status">Move to</label>
+        <select class="field-input" id="item-status" name="status">
+          {% for s in allowed %}
+            <option value="{{ s }}" {% if s == item.status %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button class="btn-primary" id="save-item" type="submit">Save</button>
+    </form>
+
+    {# Rendered here rather than in the sidebar so that it updates with the
+       swap. Anything outside #item-status-card would still show the value
+       from the original page load. #}
+    {% if item.archived_at %}
+      <p class="mt-3 text-xs text-slate-500">
+        Archived {{ timestamp(item.archived_at) }}
+      </p>
+    {% endif %}
+
+    {% if allowed | length == 1 %}
+      <p class="mt-2 text-xs text-slate-500">
+        Archived items are final: downstream systems have already been told.
+      </p>
+    {% endif %}
+
+    {% if saved %}
+      <p
+        class="mt-3 text-sm font-medium text-emerald-700"
+        data-testid="item-saved"
+        role="status"
+        aria-live="polite"
+        x-data="flash"
+        x-show="visible"
+      >
+        Saved
+      </p>
+    {% endif %}
+  </div>
+</div>

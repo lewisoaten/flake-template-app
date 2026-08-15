@@ -1,0 +1,17 @@
+{# Full-page error. Rendered for anonymous visitors too, so it must not touch
+   `user` — base.html already guards its own use of it. #}
+{% extends "base.html" %}
+{% block title %}{{ status_code }} — Example App{% endblock %}
+
+{% block content %}
+  <div class="mx-auto max-w-lg py-16 text-center">
+    <p class="text-6xl font-semibold tabular-nums text-slate-300">{{ status_code }}</p>
+    <h1 class="mt-4 text-xl font-semibold text-slate-900">{{ message }}</h1>
+    <p class="muted mt-3">
+      If you believe this is a mistake, quote the
+      <span class="font-mono">X-Request-ID</span> from the response headers when
+      you report it.
+    </p>
+    <a class="btn-primary mt-8" href="/">Back to the start</a>
+  </div>
+{% endblock %}

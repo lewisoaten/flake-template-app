@@ -1,0 +1,27 @@
+# The image builds its own venv from uv.lock; a host .venv would be both
+# wrong (NixOS paths) and enormous.
+.venv/
+__pycache__/
+*.py[cod]
+
+.git/
+.direnv/
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+
+*.db
+*.sqlite3
+.env
+
+result
+result-*
+
+tests/
+features/
+docs/
+*.md
+!README.md
+node_modules/

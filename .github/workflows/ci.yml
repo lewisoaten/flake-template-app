@@ -1,0 +1,196 @@
+name: CI
+
+# Runs on every PR — including Dependabot's — so no dependency bump lands
+# without the full suite of the template it affects having passed.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# A new push supersedes the run in flight for the same ref.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # The repository's own checks: every template flake parses and is formatted.
+  flake:
+    name: flake check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: DeterminateSystems/nix-installer-action@v22
+      - uses: nix-community/cache-nix-action@v7
+        with:
+          # Distinct from repo-hooks': same inputs, but a different closure
+          # (check derivations vs the dev shell). Sharing a key means whichever
+          # job saves first wins and the other restores something incomplete.
+          primary-key: nix-flakecheck-${{ hashFiles('flake.lock', 'flake.nix') }}
+          restore-prefixes-first-match: nix-flakecheck-
+          gc-max-store-size-linux: 2G
+      - run: nix flake check --print-build-logs
+
+  # This repository's own hooks: hygiene, workflow syntax, nix formatting, and
+  # each template's `just precommit`. Distinct from the `template` job below,
+  # which runs the hooks a *generated project* ships with.
+  repo-hooks:
+    name: repo hooks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: DeterminateSystems/nix-installer-action@v22
+      - uses: nix-community/cache-nix-action@v7
+        with:
+          # The root dev shell closure measures ~873 MB, so 2G is ample.
+          primary-key: nix-devshell-${{ hashFiles('flake.lock', 'flake.nix') }}
+          restore-prefixes-first-match: nix-devshell-
+          gc-max-store-size-linux: 2G
+      # --all-files rather than the PR diff: the per-template hook is scoped by
+      # path anyway, and a full run catches drift that no PR happens to touch.
+      - run: nix develop --command pre-commit run --all-files --show-diff-on-failure
+
+  # Enumerate templates from the flake itself, so adding one needs no edit here.
+  discover:
+    name: discover templates
+    runs-on: ubuntu-latest
+    outputs:
+      templates: ${{ steps.list.outputs.templates }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: DeterminateSystems/nix-installer-action@v22
+      - id: list
+        run: |
+          templates=$(nix eval --json .#templates \
+            --apply 'ts: builtins.filter (n: n != "default") (builtins.attrNames ts)')
+          echo "templates=$templates" >> "$GITHUB_OUTPUT"
+          echo "Discovered: $templates"
+
+  # Instantiate each template and run the project's own pipeline inside it.
+  #
+  # Deliberately not run in place: a template's tooling assumes it *is* the repo
+  # root — `pre-commit run --all-files` and the TruffleHog hook both resolve to
+  # the enclosing git repository, and in place they would scan this repo rather
+  # than the generated project. Instantiating also means CI exercises the exact
+  # thing a user gets from `nix flake init`, not an approximation of it.
+  template:
+    name: ${{ matrix.template }}
+    needs: discover
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        template: ${{ fromJSON(needs.discover.outputs.templates) }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: DeterminateSystems/nix-installer-action@v22
+
+      # The python dev shell closure measures ~5.2 GB (Playwright's browser
+      # bundle dominates), so the ceiling must sit above that or the store is
+      # truncated on save and every run re-fetches the remainder — all of the
+      # cost, none of the benefit.
+      #
+      # restore-prefixes-first-match matters more than the exact key here: a
+      # Dependabot flake.lock bump misses the primary key by design, but still
+      # restores the previous store and fetches only the delta.
+      #
+      # Purging keeps the repository inside GitHub's 10 GB cache quota; without
+      # it, every flake.lock bump would mint another multi-GB entry and evict
+      # everything else — including the uv cache below, which is the one that
+      # actually pays for itself.
+      - uses: nix-community/cache-nix-action@v7
+        with:
+          primary-key: nix-${{ matrix.template }}-${{ hashFiles(format('templates/{0}/flake.lock', matrix.template)) }}
+          restore-prefixes-first-match: nix-${{ matrix.template }}-
+          gc-max-store-size-linux: 6G
+          purge: true
+          purge-prefixes: nix-${{ matrix.template }}-
+          purge-created: 604800
+          purge-primary-key: never
+
+      # 546 MB of wheels, and the highest-value cache here: uv.lock changes far
+      # less often than flake.lock, so the hit rate is high.
+      - name: Cache uv wheels
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ matrix.template }}-${{ hashFiles(format('templates/{0}/uv.lock', matrix.template)) }}
+          restore-keys: uv-${{ matrix.template }}-
+
+      - name: Instantiate the template
+        run: |
+          mkdir -p "$RUNNER_TEMP/app"
+          cd "$RUNNER_TEMP/app"
+          nix flake init -t "$GITHUB_WORKSPACE#${{ matrix.template }}"
+          # Nix only sees tracked files, so the generated project must be a
+          # repository before its own flake will evaluate.
+          git init -q
+          git config user.email ci@example.com
+          git config user.name CI
+          git add -A
+          git commit -qm "instantiate ${{ matrix.template }}"
+
+      # SKIP_DOCKER because the image is built separately below, with a layer
+      # cache. ci.sh stays deliberately vendor-neutral — plain `docker build`,
+      # no buildx — so it runs identically on a laptop; the caching is CI's
+      # concern, not the template's.
+      - name: Run the template's pipeline
+        working-directory: ${{ runner.temp }}/app
+        env:
+          SKIP_DOCKER: '1'
+        run: nix develop --command bash scripts/ci.sh
+
+      - uses: docker/setup-buildx-action@v4
+
+      # Without a layer cache this re-downloads, inside the image, the same
+      # ~546 MB of wheels the step above just fetched. The uv sync layer is
+      # keyed on uv.lock and pyproject.toml, so it is reused by every PR that
+      # does not change them — which is nearly all of them.
+      #
+      # ci.sh has already produced the stylesheet and the vendored JS that the
+      # Dockerfile's guard requires.
+      - name: Build the production image
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ runner.temp }}/app
+          push: false
+          cache-from: type=gha,scope=${{ matrix.template }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.template }}
+
+      - name: Run every pre-commit hook
+        working-directory: ${{ runner.temp }}/app
+        run: nix develop --command pre-commit run --all-files --show-diff-on-failure
+
+      - name: Confirm the pipeline left no uncommitted changes
+        working-directory: ${{ runner.temp }}/app
+        run: |
+          # A dirty tree means a generated artefact is not gitignored, which
+          # would show up as noise in every user's first commit.
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::CI modified tracked files or produced unignored artefacts:"
+            git status --porcelain
+            git --no-pager diff
+            exit 1
+          fi
+
+  # One required check to point branch protection at, so adding a template does
+  # not mean editing the protection rules.
+  ci:
+    name: ci
+    if: always()
+    needs: [flake, repo-hooks, template]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify all jobs succeeded
+        run: |
+          echo "flake:      ${{ needs.flake.result }}"
+          echo "repo-hooks: ${{ needs.repo-hooks.result }}"
+          echo "template:   ${{ needs.template.result }}"
+          [ "${{ needs.flake.result }}" = success ] || exit 1
+          [ "${{ needs.repo-hooks.result }}" = success ] || exit 1
+          [ "${{ needs.template.result }}" = success ] || exit 1

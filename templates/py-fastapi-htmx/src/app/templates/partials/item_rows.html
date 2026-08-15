@@ -1,0 +1,22 @@
+{# Standalone HTMX fragment: served on its own to the search box, and included
+   by items/list.html for the initial page load. It may therefore reference
+   nothing but `items`. #}
+{% from "partials/_macros.html" import status_badge, timestamp, empty_row %}
+
+{% for item in items %}
+  <tr data-testid="item-row">
+    <td>
+      <a class="font-medium text-brand-700 hover:underline" href="/items/{{ item.id }}">
+        {{ item.name }}
+      </a>
+      {% if item.description %}
+        <p class="mt-0.5 max-w-md truncate text-xs text-slate-500">{{ item.description }}</p>
+      {% endif %}
+      <span class="font-mono text-xs text-slate-400">{{ item.id }}</span>
+    </td>
+    <td>{{ status_badge(item.status) }}</td>
+    <td>{{ timestamp(item.updated_at) }}</td>
+  </tr>
+{% else %}
+  {{ empty_row(3, "No items match this search.") }}
+{% endfor %}

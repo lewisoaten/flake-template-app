@@ -1,0 +1,43 @@
+{# Shared rendering helpers.
+
+   Import with: {% from "partials/_macros.html" import status_badge, timestamp %}
+   Macros keep the status-to-colour mapping in one place: a new ItemStatus
+   needs one line here and one rule in static/css/input.css, rather than an
+   edit in every table that renders a status. #}
+
+{% macro status_badge(status) %}
+  {%- set css = {
+    "draft": "badge-draft",
+    "active": "badge-active",
+    "archived": "badge-archived",
+  }.get(status | string, "badge-draft") -%}
+  <span class="{{ css }}">{{ status }}</span>
+{% endmacro %}
+
+{% macro timestamp(value) %}
+  {% if value %}
+    <time datetime="{{ value.isoformat() }}" class="tabular-nums">
+      {{ value.strftime("%Y-%m-%d %H:%M") }}
+    </time>
+  {% else %}
+    <span class="text-slate-400">—</span>
+  {% endif %}
+{% endmacro %}
+
+{% macro delivery_status(delivery) %}
+  {% if delivery.succeeded %}
+    <span class="badge-success">{{ delivery.response_status }} OK</span>
+  {% elif delivery.response_status %}
+    <span class="badge-danger">{{ delivery.response_status }}</span>
+  {% else %}
+    <span class="badge-danger">no response</span>
+  {% endif %}
+{% endmacro %}
+
+{% macro empty_row(columns, message) %}
+  <tr>
+    <td colspan="{{ columns }}" class="px-4 py-8 text-center text-sm text-slate-400">
+      {{ message }}
+    </td>
+  </tr>
+{% endmacro %}
