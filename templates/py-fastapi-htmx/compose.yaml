@@ -72,7 +72,7 @@ services:
   # A stand-in partner that accepts webhooks and logs them, so you can watch
   # the glue domain work end to end without leaving your machine.
   partner-stub:
-    image: mendhak/http-https-echo:34
+    image: mendhak/http-https-echo:41
     environment:
       HTTP_PORT: "8080"
     ports:
