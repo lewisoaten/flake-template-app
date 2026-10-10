@@ -6,28 +6,28 @@ readme = "README.md"
 requires-python = ">=3.12"
 
 dependencies = [
-    "alembic>=1.14",
+    "alembic>=1.20.0",
     "argon2-cffi>=23.1",
-    "fastapi>=0.115",
+    "fastapi>=0.142.2",
     "httpx>=0.28",
     "itsdangerous>=2.2",
     "jinja2>=3.1",
     "pydantic[email]>=2.13.4",
     "pydantic-settings>=2.7",
-    "pyjwt>=2.10",
+    "pyjwt>=2.15.1",
     "pyotp>=2.9",
     "python-multipart>=0.0.20",
     "sqlalchemy[asyncio]>=2.0.52",
     "structlog>=24.4",
     "uvicorn[standard]>=0.52.1",
-    "cryptography>=50.0.0",
+    "cryptography>=50.0.2",
 ]
 
 [project.optional-dependencies]
 # Production Postgres driver. Kept optional so local dev stays zero-dependency on SQLite.
-postgres = ["asyncpg>=0.30"]
+postgres = ["asyncpg>=0.32.0"]
 # Serverless ASGI adapter (scale-to-zero Option B).
-lambda = ["mangum>=0.19"]
+lambda = ["mangum>=0.22.0"]
 
 [dependency-groups]
 # Deliberately absent: ruff, basedpyright and pre-commit. Their PyPI
@@ -44,7 +44,7 @@ dev = [
     # supplies the browser binaries. A mismatch shows up as "Executable doesn't
     # exist" because Playwright looks for a browser revision the Nix bundle does
     # not contain. `just doctor` reports both versions.
-    "playwright==1.61.0",
+    "playwright==1.63.0",
     "pytest-playwright>=0.6",
     "respx>=0.22",
 ]
